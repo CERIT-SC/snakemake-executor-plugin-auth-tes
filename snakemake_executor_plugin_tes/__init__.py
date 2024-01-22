@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 from typing import List, Generator, Optional
+import jwt
 
 import tes
 
@@ -21,6 +22,7 @@ from snakemake_interface_executor_plugins.jobs import (
     JobExecutorInterface,
 )
 from snakemake_interface_common.exceptions import WorkflowError
+from .auth import AuthClient, GRANT_TYPE_TOKEN_EXCHANGE, GRANT_TYPE_CLIENT_CREDENTIALS
 
 
 # Optional:
@@ -39,21 +41,61 @@ class ExecutorSettings(ExecutorSettingsBase):
     user: Optional[str] = field(
         default=None,
         metadata={
-            "help": "TES username (either specify this or token)",
+            "help": "TES username (either specify this, token or OIDC settings)",
             "env_var": True,
         },
     )
     password: Optional[str] = field(
         default=None,
         metadata={
-            "help": "TES password (either specify this or a token)",
+            "help": "TES password (either specify this, token or OIDC settings)",
             "env_var": True,
         },
     )
     token: Optional[str] = field(
         default=None,
         metadata={
-            "help": "TES token (either specify this or a user/password)",
+            "help": "TES token (either specify this, user/password or OIDC settings)",
+            "env_var": True,
+        },
+    )
+
+    oidc_client_id: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "OIDC client ID",
+            "env_var": True,
+        },
+    )
+
+    oidc_client_secret: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "OIDC client secret",
+            "env_var": True,
+        },
+    )
+
+    oidc_url: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "OIDC URL",
+            "env_var": True,
+        },
+    )
+
+    oidc_access_token: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "OIDC access token",
+            "env_var": True,
+        },
+    )
+
+    oidc_audience: Optional[str] = field(
+        default="tes",
+        metadata={
+            "help": "OIDC audience",
             "env_var": True,
         },
     )
@@ -89,12 +131,95 @@ class Executor(RemoteExecutor):
         self.container_workdir = Path("/tmp")
         self.tes_url = self.workflow.executor_settings.url
 
+        self.check_params()
+
+        if self.do_oidc_auth:
+            self.auth_client = AuthClient(
+                self.workflow.executor_settings.oidc_client_id,
+                self.workflow.executor_settings.oidc_client_secret,
+                self.workflow.executor_settings.oidc_url,
+            )
+
+            if not self.auth_client.is_token_valid(
+                self.workflow.executor_settings.oidc_access_token
+            ):
+                raise WorkflowError("Invalid access token")
+
+            exchange_result = self.auth_client.exchange_access_token(
+                self.workflow.executor_settings.oidc_access_token,
+                ["offline_access"],
+            )
+
+            self._access_token = exchange_result["access_token"]
+            self._refresh_token = exchange_result["refresh_token"]
+
+            new_token_result = self.auth_client.get_new_token(
+                ["client_dynamic_registration"],
+            )
+            dynreg_token = new_token_result["access_token"]
+
+            new_client = self.auth_client.register_client(
+                dynreg_token, "run", [self.workflow.executor_settings.oidc_audience], ["offline_access"]
+            )
+
+            self.auth_client = AuthClient(
+                new_client["client_id"],
+                new_client["client_secret"],
+                self.workflow.executor_settings.oidc_url,
+            )
+
+            exchange_result = self.auth_client.exchange_access_token(
+                self._access_token,
+                ["offline_access"],
+                self.workflow.executor_settings.oidc_audience,
+            )
+
+            self._access_token = exchange_result["access_token"]
+            self._refresh_token = exchange_result["refresh_token"]
+
         self.tes_client = tes.HTTPClient(
             url=self.tes_url,
-            token=self.workflow.executor_settings.token,
+            token=self.tes_access_token,
             user=self.workflow.executor_settings.user,
             password=self.workflow.executor_settings.password,
         )
+
+    @property
+    def tes_access_token(self):
+        if not self.do_oidc_auth:
+            return self.workflow.executor_settings.token
+
+        if self.auth_client.is_token_expired(self._access_token):
+            refresh_result = self.auth_client.refresh_access_token(
+                self._refresh_token
+            )
+
+            self._access_token = refresh_result["access_token"]
+            self._refresh_token = refresh_result["refresh_token"]
+
+        return self._access_token
+
+    @property
+    def do_oidc_auth(self):
+        return any(
+            [
+                self.workflow.executor_settings.oidc_access_token,
+                self.workflow.executor_settings.oidc_client_id,
+                self.workflow.executor_settings.oidc_client_secret,
+                self.workflow.executor_settings.oidc_url,
+            ]
+        )
+
+    def check_params(self):
+        if self.do_oidc_auth:
+            if self.workflow.executor_settings.oidc_access_token is None:
+                raise WorkflowError("OIDC access token is required")
+            if self.workflow.executor_settings.oidc_client_id is None:
+                raise WorkflowError("OIDC client ID is required")
+            if self.workflow.executor_settings.oidc_client_secret is None:
+                raise WorkflowError("OIDC client secret is required")
+            if self.workflow.executor_settings.oidc_url is None:
+                raise WorkflowError("OIDC URL is required")
 
     def run_job(self, job: JobExecutorInterface):
         # Implement here how to run a job.
@@ -112,6 +237,7 @@ class Executor(RemoteExecutor):
         # submit job here, and obtain job ids from the backend
         try:
             task = self._get_task(job, jobscript)
+            self.tes_client.token = self.tes_access_token
             tes_id = self.tes_client.create_task(task)
             self.logger.info(f"[TES] Task submitted: {tes_id}")
         except Exception as e:
@@ -151,6 +277,7 @@ class Executor(RemoteExecutor):
 
         for j in active_jobs:
             async with self.status_rate_limiter:
+                self.tes_client.token = self.tes_access_token
                 res = self.tes_client.get_task(j.external_jobid, view="MINIMAL")
                 self.logger.debug(
                     "[TES] State of task '{id}': {state}".format(
@@ -176,6 +303,7 @@ class Executor(RemoteExecutor):
         # This method is called when Snakemake is interrupted.
         for job_info in active_jobs:
             try:
+                self.tes_client.token = self.tes_access_token
                 self.tes_client.cancel_task(job_info.external_jobid)
                 self.logger.info(f"[TES] Task canceled: {job_info.external_jobid}")
             except Exception:
