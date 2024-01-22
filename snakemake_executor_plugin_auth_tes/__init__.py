@@ -337,11 +337,11 @@ class Executor(RemoteExecutor):
         overwrite_path=None,
         checkdir=None,
         pass_content=False,
-        type="Input",
+        filetype="Input",
     ):
         # TODO: handle FTP files
         max_file_size = 131072
-        if type not in ["Input", "Output"]:
+        if filetype not in ["Input", "Output"]:
             raise ValueError("Value for 'model' has to be either 'Input' or 'Output'.")
 
         members = {}
@@ -349,6 +349,15 @@ class Executor(RemoteExecutor):
         # Handle remote files
         if hasattr(iofile, "is_storage") and iofile.is_storage:
             return None
+
+        elif hasattr(iofile, "is_passthrough") and iofile.is_passthrough:
+            if iofile.passthrough_path.startswith("htsget://"):
+                members["url"] = iofile.passthrough_path.replace("htsget://", "htsget://bearer:" + self._get_access_token() + "@")
+            else:
+                members["url"] = iofile.passthrough_path
+
+            members["path"] = self._get_members_path(overwrite_path, iofile)
+            members["content"] = None
 
         # Handle local files
         else:
@@ -373,7 +382,7 @@ class Executor(RemoteExecutor):
                         members["content"] = stream.read()
                     members["url"] = None
 
-        model = getattr(tes.models, type)
+        model = getattr(tes.models, filetype)
         self.logger.warning(members)
         return model(**members)
 
@@ -412,7 +421,7 @@ class Executor(RemoteExecutor):
 
     def _append_task_outputs(self, outputs, files, checkdir):
         for file in files:
-            obj = self._prepare_file(iofile=file, checkdir=checkdir, type="Output")
+            obj = self._prepare_file(iofile=file, checkdir=checkdir, filetype="Output")
             if obj:
                 outputs.append(obj)
         return outputs
