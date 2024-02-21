@@ -153,13 +153,8 @@ class Executor(RemoteExecutor):
             self._access_token = exchange_result["access_token"]
             self._refresh_token = exchange_result["refresh_token"]
 
-            new_token_result = self.auth_client.get_new_token(
-                ["client_dynamic_registration"],
-            )
-            dynreg_token = new_token_result["access_token"]
-
             new_client = self.auth_client.register_client(
-                dynreg_token, "run", [self.workflow.executor_settings.oidc_audience], ["offline_access"]
+                "run", [self.workflow.executor_settings.oidc_audience], ["offline_access", "client_dynamic_deregistration"]
             )
 
             self.auth_client = AuthClient(
@@ -275,6 +270,7 @@ class Executor(RemoteExecutor):
             "CANCELED",  # TODO: really call `error_callback` on this?
         ]
 
+        finished_job_count = 0
         for j in active_jobs:
             async with self.status_rate_limiter:
                 self.tes_client.token = self.tes_access_token
@@ -286,7 +282,10 @@ class Executor(RemoteExecutor):
                 )
                 if res.state in UNFINISHED_STATES:
                     yield j
-                elif res.state in ERROR_STATES:
+                else:
+                    finished_job_count += 1
+
+                if res.state in ERROR_STATES:
                     # TODO remove this dbg code
                     import sys
 
@@ -297,6 +296,10 @@ class Executor(RemoteExecutor):
                     self.report_job_error(j)
                 elif res.state == "COMPLETE":
                     self.report_job_success(j)
+        
+        if finished_job_count == len(active_jobs):
+            print(self.auth_client.client_id, self.auth_client.client_secret)
+            self.auth_client.deregister_self()
 
     def cancel_jobs(self, active_jobs: List[SubmittedJobInfo]):
         # Cancel all active jobs.

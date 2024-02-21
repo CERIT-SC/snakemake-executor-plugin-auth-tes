@@ -1,5 +1,6 @@
 import requests
 import jwt
+import urllib.parse as urlparse
 
 GRANT_TYPE_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
 GRANT_TYPE_CLIENT_CREDENTIALS = "client_credentials"
@@ -95,10 +96,13 @@ class AuthClient:
 
         return response.json()
     
-    def register_client(self, access_token, client_name, resource_ids, scopes, access_token_validity_seconds=600, refresh_token_validity_seconds=3600):
+    def register_client(self, client_name, resource_ids, scopes, access_token_validity_seconds=600, refresh_token_validity_seconds=3600):
+        new_token_response = self.get_new_token(["client_dynamic_registration"]) 
+        access_token = new_token_response["access_token"]
+
         body = {
             "client_name": client_name,
-            "grant_types": ["urn:ietf:params:oauth:grant-type:token-exchange", "refresh_token"], # move elsewhere
+            "grant_types": ["urn:ietf:params:oauth:grant-type:token-exchange", "refresh_token", "client_credentials"],
             "token_endpoint_auth_method": "client_secret_basic",
             "scope": scopes,
             "resources": resource_ids,
@@ -118,3 +122,16 @@ class AuthClient:
             "client_id": response_data["client_id"],
             "client_secret": response_data["client_secret"]
         }
+
+    def deregister_self(self):
+        new_token_response = self.get_new_token(["client_dynamic_deregistration"])
+        access_token = new_token_response["access_token"]
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+        base_register_url = self.register_url if self.register_url.endswith("/") else self.register_url + "/"
+        url = urlparse.urljoin(base_register_url, self.client_id)
+        response = requests.delete(url, headers=headers)
+
+        if response.status_code != 204:
+            raise Exception("Failed to deregister the client: " + response.text)
+    
