@@ -8,8 +8,7 @@ import math
 import os
 from pathlib import Path
 from typing import List, Generator, Optional
-import jwt
-
+import atexit
 import tes
 
 from snakemake_interface_executor_plugins.executors.base import SubmittedJobInfo
@@ -22,7 +21,8 @@ from snakemake_interface_executor_plugins.jobs import (
     JobExecutorInterface,
 )
 from snakemake_interface_common.exceptions import WorkflowError
-from .auth import AuthClient, GRANT_TYPE_TOKEN_EXCHANGE, GRANT_TYPE_CLIENT_CREDENTIALS
+
+from .auth import AuthClient
 
 
 # Optional:
@@ -179,6 +179,12 @@ class Executor(RemoteExecutor):
             password=self.workflow.executor_settings.password,
         )
 
+        def cleanup():
+            if self.auth_client:
+                self.auth_client.deregister_self()
+
+        atexit.register(cleanup)
+
     @property
     def tes_access_token(self):
         if not self.do_oidc_auth:
@@ -286,20 +292,9 @@ class Executor(RemoteExecutor):
                     finished_job_count += 1
 
                 if res.state in ERROR_STATES:
-                    # TODO remove this dbg code
-                    import sys
-
-                    print(
-                        open(os.environ["GITHUB_WORKSPACE"] + "/funnel.log").read(),
-                        file=sys.stderr,
-                    )
                     self.report_job_error(j)
                 elif res.state == "COMPLETE":
                     self.report_job_success(j)
-        
-        if finished_job_count == len(active_jobs):
-            print(self.auth_client.client_id, self.auth_client.client_secret)
-            self.auth_client.deregister_self()
 
     def cancel_jobs(self, active_jobs: List[SubmittedJobInfo]):
         # Cancel all active jobs.
