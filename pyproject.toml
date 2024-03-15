@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "snakemake-executor-plugin-tes"
-version = "0.1.2"
+name = "snakemake-executor-plugin-auth-tes"
+version = "1.0.0"
 description = "A Snakemake executor plugin for submitting jobs via GA4GH TES."
 authors = [
     "Sven Twardziok <sven.twardziok@bih-charite.de>",
@@ -10,16 +10,18 @@ authors = [
 ]
 readme = "README.md"
 license = "MIT"
-repository = "https://github.com/snakemake/snakemake-executor-plugin-tes"
+repository = "https://github.com/CERIT-SC/snakemake-executor-plugin-auth-tes"
 documentation = "https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/tes.html"
 keywords = ["snakemake", "plugin", "executor", "tes"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 snakemake-interface-common = "^1.14.0"
-snakemake-interface-executor-plugins = "^8.1.1"
+snakemake-interface-executor-plugins = "^9.0.0"
 py-tes = "^0.4.2"
 requests = "^2.26.0"
+PyJWT="^2.8.0"
+cryptography="^42.0.5"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -29,8 +31,6 @@ coverage = "^7.3.1"
 pytest = "^7.4.2"
 snakemake = {git = "https://github.com/snakemake/snakemake.git"}
 snakemake-storage-plugin-s3 = "^0.2.7"
-cryptography = "^42.0.2"
-PyJWT = "^2.8.0"
 
 [tool.coverage.run]
 omit = [".*", "*/site-packages/*", "Snakefile"]
