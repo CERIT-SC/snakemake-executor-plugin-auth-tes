@@ -1,6 +1,6 @@
 from typing import Optional
 import snakemake.common.tests
-from snakemake_executor_plugin_tes import ExecutorSettings
+from snakemake_executor_plugin_auth_tes import ExecutorSettings
 from snakemake_interface_executor_plugins.settings import ExecutorSettingsBase
 
 

@@ -154,7 +154,9 @@ class Executor(RemoteExecutor):
             self._refresh_token = exchange_result["refresh_token"]
 
             new_client = self.auth_client.register_client(
-                "run", [self.workflow.executor_settings.oidc_audience], ["offline_access", "client_dynamic_deregistration"]
+                "run",
+                [self.workflow.executor_settings.oidc_audience],
+                ["offline_access", "client_dynamic_deregistration"],
             )
 
             self.auth_client = AuthClient(
@@ -191,9 +193,7 @@ class Executor(RemoteExecutor):
             return self.workflow.executor_settings.token
 
         if self.auth_client.is_token_expired(self._access_token):
-            refresh_result = self.auth_client.refresh_access_token(
-                self._refresh_token
-            )
+            refresh_result = self.auth_client.refresh_access_token(self._refresh_token)
 
             self._access_token = refresh_result["access_token"]
             self._refresh_token = refresh_result["refresh_token"]
