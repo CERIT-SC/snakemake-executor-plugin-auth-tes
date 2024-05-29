@@ -202,7 +202,7 @@ class Executor(RemoteExecutor):
         if not self.do_oidc_auth:
             return self.workflow.executor_settings.token
 
-        if self.auth_client.is_token_expired(self._access_token):
+        if self.auth_client.is_token_expired(self._access_token, 300):
             refresh_result = self.auth_client.refresh_access_token(self._refresh_token)
 
             self._access_token = refresh_result["access_token"]

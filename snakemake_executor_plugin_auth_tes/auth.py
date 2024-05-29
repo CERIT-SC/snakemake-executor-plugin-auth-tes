@@ -21,13 +21,17 @@ class AuthClient:
             self.client_id, self.client_secret
         )
 
-    def is_token_expired(self, token):
+    def is_token_expired(self, token, time_offset=0):
         jwks_client = jwt.PyJWKClient(self.jwks_url)
         header = jwt.get_unverified_header(token)
         key = jwks_client.get_signing_key(header["kid"]).key
 
         try:
-            jwt.decode(token, key, [header["alg"]], options={"verify_aud": False})
+            data = jwt.decode(
+                token, key, [header["alg"]], options={"verify_aud": False}
+            )
+            if data["exp"] - time_offset:
+                return True
         except jwt.ExpiredSignatureError:
             return True
 
