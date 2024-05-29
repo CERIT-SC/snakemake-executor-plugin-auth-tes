@@ -147,7 +147,10 @@ class Executor(RemoteExecutor):
 
             exchange_result = self.auth_client.exchange_access_token(
                 self.workflow.executor_settings.oidc_access_token,
-                ["offline_access"],
+                [
+                    "offline_access",
+                    "ga4gh_passport_v1",
+                ],
             )
 
             self._access_token = exchange_result["access_token"]
@@ -156,7 +159,11 @@ class Executor(RemoteExecutor):
             new_client = self.auth_client.register_client(
                 "run",
                 [self.workflow.executor_settings.oidc_audience],
-                ["offline_access", "client_dynamic_deregistration"],
+                [
+                    "offline_access",
+                    "client_dynamic_deregistration",
+                    "ga4gh_passport_v1",
+                ],
             )
 
             self.auth_client = AuthClient(
@@ -167,7 +174,10 @@ class Executor(RemoteExecutor):
 
             exchange_result = self.auth_client.exchange_access_token(
                 self._access_token,
-                ["offline_access"],
+                [
+                    "offline_access",
+                    "ga4gh_passport_v1",
+                ],
                 self.workflow.executor_settings.oidc_audience,
             )
 
@@ -352,7 +362,9 @@ class Executor(RemoteExecutor):
 
         elif hasattr(iofile, "is_passthrough") and iofile.is_passthrough:
             if iofile.passthrough_path.startswith("htsget://"):
-                members["url"] = iofile.passthrough_path.replace("htsget://", "htsget://bearer:" + self._get_access_token() + "@")
+                members["url"] = iofile.passthrough_path.replace(
+                    "htsget://", "htsget://bearer:" + self.tes_access_token + "@"
+                )
             else:
                 members["url"] = iofile.passthrough_path
 
