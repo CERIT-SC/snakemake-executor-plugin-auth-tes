@@ -30,7 +30,7 @@ class AuthClient:
             data = jwt.decode(
                 token, key, [header["alg"]], options={"verify_aud": False}
             )
-            if data["exp"] - time_offset:
+            if data["exp"] - time_offset < 0:
                 return True
         except jwt.ExpiredSignatureError:
             return True
@@ -88,7 +88,10 @@ class AuthClient:
         return response.json()
 
     def refresh_access_token(self, refresh_token):
-        body = {"refresh_token": refresh_token, "grant_type": "refresh_token" ""}
+        body = {
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }
 
         response = requests.post(self.token_url, body, auth=self.basic_auth)
 
